@@ -2,7 +2,8 @@ libsexp - S-expression library for Plan 9
 *Charles.Forsyth@gmail.com (www.terzarima.net)*
 
 * An S-expression library for Plan 9, based on my older Inferno module.
-  The interface 
+  The manual pages are in the **man** directory: *sexp(2)* defines the interface; *sexprs(6)* defines the S-expression syntax used.
+  It is based on the variant defined by Rivest in Internet Draft **draft-rivest-sexp-00.txt** (4 May 1997) for use by SPKI.
 * Version 20150323
 
 ### Installation ###

@@ -11,3 +11,6 @@ HFILES=\
 
 $O.stest:	stest.$O $LIB
 	$LD -o $target $prereq
+
+tests:V:	$O.stest
+	$O.stest <Tests | cmp /fd/0 Test-out

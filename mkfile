@@ -1,6 +1,7 @@
 </$objtype/mkfile
 
 LIB=libsexp.a$O
+CLEANFILES=$O.stest
 OFILES=\
 	sexprs.$O\
 

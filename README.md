@@ -1,7 +1,8 @@
 libsexp - S-expression library for Plan 9
 *Charles.Forsyth@gmail.com (www.terzarima.net)*
 
-* Quick summary
+* An S-expression library for Plan 9, based on my older Inferno module.
+  The interface 
 * Version 20150323
 
 ### Installation ###
@@ -12,8 +13,13 @@ libsexp - S-expression library for Plan 9
 * **mk install**
   will make and copy libsexp.a$O to $LIBDIR, which is . by default.
   To select a different location, change mkfile to set LIBDIR, or use LIBDIR=/my/libdir mk install
+* **mk clean**
+  will remove intermediate object files
+* **mk nuke**
+  will remove all output files
 
 As usual for Plan 9 source, simply set objtype=... to select a target library architecture different from $cputype.
+Copy **sexp.h** to some suitable include directory.
 
 ### After installation ###
 

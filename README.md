@@ -12,8 +12,8 @@ libsexp - S-expression library for Plan 9
 * **cd $home/src/libsexp; mk** 
   will make **libsexp.a$O**
 * **mk install**
-  will make and copy libsexp.a$O to $LIBDIR, which is . by default.
-  To select a different location, change mkfile to set LIBDIR, or use LIBDIR=/my/libdir mk install
+  will make and copy **libsexp.a$O** to **$LIBDIR**, which is . by default.
+  To select a different location, change **mkfile** to set LIBDIR, or use **LIBDIR=***/my/libdir* **mk install**
 * **mk clean**
   will remove intermediate object files
 * **mk nuke**

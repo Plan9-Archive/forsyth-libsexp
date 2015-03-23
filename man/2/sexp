@@ -1,0 +1,628 @@
+.TH SEXP 2
+.SH NAME
+se_args,
+se_asdata,
+se_astext,
+se_b64text,
+se_binary,
+se_cons,
+se_copy,
+se_data,
+se_els,
+se_eq,
+se_form,
+se_free,
+se_hd,
+se_incref,
+se_islist,
+se_len,
+se_list,
+se_new,
+se_op,
+se_pack,
+se_packedsize,
+se_parse,
+se_read,
+se_str,
+se_string,
+se_text,
+se_tl,
+se_unique,
+se_unpack,
+b_copy,
+b_new,
+b_unique
+\- S-expressions
+.SH SYNOPSIS
+.EX
+#include <u.h>
+#include <libc.h>
+#include <String.h>
+#include <sexp.h>
+
+typedef struct String String;
+
+String* b_new(void *a, uint asize);
+String* b_copy(String *b);
+String* b_unique(String *b);
+
+Sexp*   se_str(char*);
+Sexp*   se_string(String *s);
+Sexp*   se_data(uchar *a, uint alen);
+Sexp*   se_binary(String *b);
+Sexp*   se_list(Sexp*, ...);
+Sexp*   se_form(char *op, Sexp*, ...);
+void    se_free(Sexp *e);
+
+Sexp*   se_parse(char *s, char **end);
+String* se_text(Sexp *e);
+String* se_b64text(Sexp *e);
+
+uint    se_packedsize(Sexp *e);
+uint    se_pack(uchar *a, uint asize, Sexp *e);
+Sexp*   se_unpack(char *a, uint asize, char **end);
+
+Sexp*   se_cons(Sexp *hd, Sexp *tl);
+Sexp*   se_hd(Sexp *e);
+Sexp*   se_tl(Sexp *e);
+
+int     se_eq(Sexp *e1, Sexp *e2);
+Sexp*   se_copy(Sexp *e);
+
+int     se_islist(Sexp *e);
+int     se_len(Sexp *e);
+Sexp*   se_els(Sexp *e);
+char*   se_op(Sexp *e);
+Sexp*   se_args(Sexp *e);
+String* se_asdata(Sexp *e);
+String* se_astext(Sexp *e);
+
+Sexp*   se_incref(Sexp *e);
+Sexp*   se_unique(Sexp *e);
+
+#include <bio.h>
+
+Sexp*   se_read(Biobuf *b, char *err, uint errlen);
+.EE
+.SH DESCRIPTION
+The
+.B sexp
+library provides a data type and I/O for S-expressions, or `symbolic expressions',
+which represent complex data as trees.
+This implementation provides the variant defined by
+Rivest in Internet Draft
+.L draft-rivest-sexp-00.txt
+(4 May 1997),
+as used for instance by the Simple Public Key Infrastructure (SPKI).
+It offers a basic set of operations on the internal representation,
+and input and output in both canonical and advanced transport encodings.
+.I Canonical
+form conveys binary data directly and efficiently (unlike some
+other schemes such as XML).
+Canonical encoding must be used when exchanging S-expressions between computers,
+and when digitally signing an expression.
+.I Advanced
+encoding is a more elaborate
+form similar to that used by Lisp interpreters, typically using
+only printable characters: representing any binary data in hexadecimal or base 64 encodings,
+and quoting strings containing special characters, using escape sequences as required.
+Unquoted text is called a
+.IR token ,
+restricted by the standard to a specific alphabet:
+it must start with a letter or a character from the set
+.LR "-./_:*+=" ,
+and contain only letters, digits and characters from that set.
+(As an extension, this implementation allows a token to start with a sequence of digits
+provided the digits are not followed by a colon.)
+Upper- and lower-case letters are distinct.
+See
+.IR sexprs (6)
+for a precise description.
+.PP
+Textual data is represented by the
+.B String
+type of
+.IR string (2),
+to allow arbitrarily long strings.
+They always contain a null byte (ie,
+.I s_terminate
+has been applied).
+.PP
+Binary data is also stored in
+.BR String s,
+but without the null terminator.
+.PP
+.B Sexp
+is the internal representation of S-expression data, as lists and non-list values (atoms).
+An S-expression can form a tree structure:
+a list may contain not just tokens but other lists as its elements, and so on recursively.
+A well-formed S-expression might be a tree, but cannot contain cycles.
+The atoms are strings of text or binary.
+The structure is shown below:
+.IP
+.EX
+struct Sexp {
+    Lock;
+    int tag;
+    union{
+        struct{ /* atom (Sstring or Sbinary) */
+            String* s;
+            String* hint;
+        };
+        struct{ /* list element */
+            Sexp*   hd; /* datum, or nil for empty list */
+            Sexp*   tl; /* further Slist, or nil */
+        };
+    };
+};
+.EE
+.PP
+.B Sexp
+distinguishes three variants by different values of
+.BR tag :
+.TF StringXX
+.TP
+.B Sstring
+An atom that can be represented as a textual string
+.IR s ,
+including all tokens but also any other data that contains no characters outside the 7-bit ASCII
+set and no control-characters other than space.
+.TP
+.B Sbinary
+An atom that might be purely binary data,
+text with non-space control-characters,
+or
+.IR utf (6)
+with bytes outside the ASCII range.
+See `binary data' below.
+.TP
+.B Slist
+A list element, represented by a pair of S-expression values,
+.B hd
+and
+.BR tl .
+For any list
+.IR l ,
+.IB l .hd
+points to the element at the head of the list, which can have any
+.BR tag ,
+and
+.IB l .tl
+points to the tail of the list (ie, the rest of it),
+where
+.IB l .tl
+must also have
+.B tag
+value
+.BR Slist .
+If
+.B hd
+is nil, the list is empty, and
+.B tl
+must also be nil.
+.PD
+.PP
+Both
+.B Sstring
+and
+.B Sbinary
+variants have an associated
+.BR hint ,
+a string that provides a `display hint'.
+See the Internet Draft for its intended use; it is typically nil.
+.SS Binary data
+Both text and binary data is kept in the dynamic
+.B String
+type for convenience.
+The main distinction is that text is always null-terminated (the zero byte is not included in the length),
+but binary data is not.
+.PP
+.I B_new
+will create a new binary
+.B String
+from the initial
+.I asize
+bytes of object
+.IR a .
+Owing to a limitation of
+.IR string (2),
+programs must use
+.I b_copy
+not
+.I s_clone
+to copy such values,
+and
+.I b_unique
+not
+.I s_unique
+to get a unique reference.
+Those functions, however, work equally well on text strings.
+.SS "S-expression construction"
+.I Se_str
+returns an S-expression representing the string
+.IR s ;
+.I se_string
+is similar for
+.B String
+.IR s .
+.PP
+.I Se_data
+returns an S-expression representing a copy of the initial
+.I alen
+bytes of
+.IR a .
+.I Se_binary
+returns an S-expression that refers directly to the binary String
+.IR b .
+.PP
+.I Se_list
+returns an S-expression representing the list of smaller S-expressions given as parameters.
+A nil value must end the parameter list.
+If the first (only) parameter is nil,
+.I se_list
+returns an empty list.
+.I Se_form
+is similar, but the first element of the resulting list will be an S-expression representing the string
+.IR op ,
+followed by the remaining parameters.
+It simplifies use of a common idiom where the first element of a list is an operation name,
+and remaining elements are parameters.
+.PP
+.I Se_cons
+returns a new list with
+.I hd
+as its head element and
+.I tl
+as its tail.
+.I Hd
+can be any S-expression, but if
+.I tl
+is not nil, it must be a list (ie, with tag
+.BR Slist ).
+If
+.I hd
+is nil,
+.I tl
+must also be nil, and the result is the empty list.
+.PP
+.I S_free
+frees the expression
+.I e
+and its substructure
+(but see
+.I s_incref
+below).
+.SS "Reading and writing"
+.PP
+.I Se_parse
+parses the first S-expression in string
+.I s
+and returns a pointer to the resulting
+.BR Sexp .
+It accepts both the advanced and canonical forms of S-expression.
+If
+.I end
+is not nil,
+.I se_parse
+will
+set
+.I *end
+to the first unparsed character in
+.IR s .
+On an error,
+.I se_parse
+returns nil; the system error string contains a diagnostic.
+.I Es
+(if not nil) will have the same value as
+.IR s .
+.PP
+.I Se_text
+returns a string that represents
+.I e
+as an S-expression in advanced (`human-readable') transport form containing no newlines.
+The result of
+.I se_text
+can always be interpreted by
+.I se_read
+and
+.IR se_parse ,
+and furthermore
+.I "se_parse(se_text(e), nil)"
+yields the same tree value as
+.I e
+(similarly for
+.IR se_read ).
+.PP
+.I Se_b64text
+returns a
+.B String
+that contains the base-64 form of the canonical transport form of
+.IR e ,
+enclosed in braces, as specified in the Internet Draft.
+.PP
+.I Se_pack
+places the canonical transport form of S-expression
+.I e
+in the array
+.IR a ,
+and returns the number of bytes used.
+If the value could not fit,
+.I se_pack
+returns zero,
+and the array is unchanged.
+.PP
+.I Se_packedsize
+returns the size in bytes of the canonical encoding of
+.IR e .
+The result can be used to allocate a suitably-sized buffer for
+.IR se_pack .
+.PP
+.I Se_unpack
+parses the first S-expression in the initial
+.I asize
+bytes of array
+.IR a ,
+and returns the resulting S-expression.
+It returns nil on an error, and sets the system error string.
+If the value
+.I end
+is not nil,
+.I se_unpack
+sets
+.I *end
+to the first unused byte in
+.IR a .
+The data in
+.I a
+is typically in canonical transport form, read from a file or network connection.
+.PP
+All input functions accept S-expression in either canonical or advanced form, or
+any legal mixture of forms.
+Expressions can cross line boundaries.
+For output in canonical form, use
+.I se_pack ,
+for output in advanced form (similar to Lisp's S-expressions), use
+.I se_text .
+.SS "Other operations"
+.I Se_eq
+returns true iff
+.I e1
+and
+.I e2
+are identical S-expressions (isomorphic in tree structure and atoms in corresponding positions in
+.I e1
+and
+.I e2
+equal).
+.PP
+.I Se_copy
+returns a new
+.B Sexp
+value equal to
+.IR e ,
+but sharing no storage with it.
+(In other words, it returns a copy of the
+whole tree
+.IR e ).
+.PP
+.I Se_islist
+returns true iff
+.I e
+is a list
+(ie, a value with tag
+.BR Slist ).
+.PP
+.I Se_len
+returns the number of elements in the list
+.IR e ;
+it returns 0 if
+.I e
+is nil, the empty list, or not a list.
+.PP
+Two operations provide a shorthand for fetching the value of an atom, returning nil if
+applied to a list.
+.I S_astext
+returns the value of
+.I e
+as a
+.BR String .
+.ig
+binary data is assumed to be a string in
+.IR utf (6)
+representation.
+..
+.I Se_asdata
+returns the value of
+.I e
+as
+.BR Binary .
+.ig
+A
+.B String
+value will be converted to an array of bytes giving its
+.IR utf (6).
+..
+They return nil if
+.I e
+has not got the appropriate tag.
+.PP
+The remaining operations extract values from lists,
+and return nil if applied to nil, an atom, or the empty list.
+.I Se_els
+returns the elements of list
+.IR e .
+.I Se_op
+returns the value, as a C string, of the head of list
+.IR e
+if
+.I se_hd(e)
+is a string.
+(The string is a reference into
+.I e
+and should not be freed.)
+.I Se_args
+returns a list containing the second and subsequent values in list
+.IR e ;
+it returns nil if
+.I e
+is nil, empty, or not a list.
+The first token of a list often gives an operation name, with remaining list items as parameters.
+.I Se_op
+and
+.I se_args
+reduce the clutter when manipulating such structures.
+.SS Reference counts
+Similar conventions are used here to those of
+.IR string (2).
+As created by the functions above,
+all
+.BR Binary ,
+.B String
+and
+.B Sexp
+values have a reference count of one.
+.PP
+.I Se_incref
+increments the reference count of S-expression
+.IR e .
+.I S_free
+decrements the reference count and
+will free an expression (and its substructure) only when the count reaches zero.
+.I Se_unique
+returns a unique copy of
+.IR e :
+if the reference count it
+1 it returns
+.IR e ,
+otherwise it returns
+.IR se_copy(e) .
+.PP
+None of the other functions call
+.IR se_incref
+or
+.I s_incref
+(in particular
+.I se_list
+and
+.I se_cons ).
+Similarly, the values returned from
+.I se_hd
+and
+.IR se_tl ,
+and
+.IR se_op ,
+.IR se_args ,
+.I se_asdata
+and
+.IR se_astext
+are valid only for the lifetime of the
+.I e
+passed as a parameter,
+unless the
+.I incref
+functions are used if required.
+.PP
+Reference counts must be maintained by the application to control the lifetime of S-expressions
+when they are shared in concurrent programs and when
+substructure might outlive its parent S-expression in non-concurrent programs.
+.SS "Bio interaction
+.I Se_read
+reads an S-expression from the
+.B Biobuf
+.I b
+and returns it.
+.I Se_read
+returns null at end of file or if a valid expression was not found.
+If
+.I err
+is not nil,
+at end of file it will be the null string, and on error it will contain a diagnostic (up to
+.I errlen
+bytes will be written),
+as will the system error string.
+.SH EXAMPLES
+Traverse an S-expression.
+Each element of a list is visited by following the
+.B tl
+pointers:
+.IP
+.EX
+void
+walksexp(Sexp *e)
+{
+    if(e == nil)
+        return;
+    switch(e->tag){
+    case Sstring:
+        /* process e->s as text */
+        break;
+    case Sbinary:
+        /* process e->s as text or binary */
+        break;
+    case Slist:
+        for(; e != nil; e = e->tl)
+            walksexp(e->hd);
+        break;
+    }
+}
+.EE
+.PP
+Create an
+.B Sexp
+from a string:
+.IP
+.EX
+se_parse("(a (b (c) \e"332965\e") ())")
+.EE
+.PP
+Create the same
+.B Sexp
+from components:
+.IP
+.EX
+se_form("a",
+    se_form("b",
+        se_form("c", nil), se_str("332965"), nil),
+    se_list(nil), nil);
+.EE
+.PP
+See if
+.I e
+has a particular form:
+.IP
+.EX
+s = se_op(e);
+if(s == nil)
+    return; /* not a string */
+for(i = 0; forms[i].name != nil; i++)
+    if(strcmp(s, forms[i].name) == 0){
+        process(&forms[i], se_args(e));
+        return;
+    }
+.EE
+.SH SOURCE
+.B /sys/src/libsexp
+.SH SEE ALSO
+.IR bio (2),
+.IR sexprs (6)
+.PP
+R. Rivest, ``S-expressions'', Network Working Group Internet Draft,
+.L http://theory.lcs.mit.edu/~rivest/sexp.txt
+(4 May 1997),
+reproduced in
+.BR /lib/sexp .
+.SH BUGS
+The canonical form does not distinguish between text and binary except by content, which results
+in
+.IR utf (6)
+being treated as binary.
+Since both are represented by
+.BR String ,
+the nuisance in practice is using
+.I b_copy
+and
+.I b_unique
+instead of the normal
+.IR string (2)
+operations,
+which rely on a zero byte terminator.

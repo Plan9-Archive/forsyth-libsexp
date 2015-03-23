@@ -19,6 +19,7 @@ libsexp - S-expression library for Plan 9
   will remove all output files
 
 As usual for Plan 9 source, simply set objtype=... to select a target library architecture different from $cputype.
+
 Copy **sexp.h** to some suitable include directory.
 
 ### After installation ###

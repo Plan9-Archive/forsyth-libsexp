@@ -1,4 +1,3 @@
-syntax: glob
 *.[5678qkv]
 *.a[5678qkv]
 [5678qkv].*
